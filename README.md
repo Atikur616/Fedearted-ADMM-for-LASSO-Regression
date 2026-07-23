@@ -9,7 +9,7 @@ The framework enables collaborative coefficient estimation, variable selection, 
 
 The complete Federated ADMM-LASSO formulation, update derivations, convergence diagnostics, and algorithm are available on the project webpage:
 
-[View the Federated ADMM-LASSO webpage](https://atikur616.github.io/Fedearted-ADMM-for-LASSO-Regression/)
+[View the Federated ADMM-LASSO](https://atikur616.github.io/Fedearted-ADMM-for-LASSO-Regression/)
 
 ## Repository Files
 
