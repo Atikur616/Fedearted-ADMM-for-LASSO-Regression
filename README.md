@@ -1,2 +1,2 @@
-# Fedearted ADMM-for-LASSO-Regression-in-Federated-Learning-Setup
+# Fedearted ADMM-for-LASSO-Regression
 The following R code implements the Alternating Direction Method of Multipliers (ADMM) for LASSO regression in a federated learning setup with two data centers. It simulates data for the two centers and applies local ADMM-LASSO optimization to estimate sparse regression coefficients. These local updates are aggregated iteratively to achieve a global model while maintaining data privacy. The code evaluates the performance of the federated ADMM-LASSO framework by calculating false positives, false negatives, Mean Squared Error (MSE), and Mean Absolute Error (MAE) for coefficient estimation and prediction across multiple replications.
