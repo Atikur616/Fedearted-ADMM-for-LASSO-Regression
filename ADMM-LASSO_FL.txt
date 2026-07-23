@@ -17,7 +17,7 @@ m <- 2
 lambda_seq <- seq(0.01, 3, by = 0.1) 
 
 # ADMM penalty parameter
-rho <- 0.012
+rho <- 1
 
 # Threshold to determine for the coefficient 
 threshold <- 0.001
