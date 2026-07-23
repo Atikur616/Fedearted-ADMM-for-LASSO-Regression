@@ -1,16 +1,17 @@
-
 ### Load the "glmnet" package
 library(glmnet)
 
 # Number of replications
 num_replications <- 100
 
+######### Parameters ######
 # Number of features
-p <- 100
+p <- 200
 
-# Simulate data for two clients
-n <- 200  # Number of samples per client
-m <- 2   # Number of clients
+# Number of samples per client
+n <- 75 
+# Number of clients
+m <- 2  
 
 # Sequence of lambda values for tuning
 lambda_seq <- seq(0.01, 3, by = 0.1) 
@@ -18,7 +19,7 @@ lambda_seq <- seq(0.01, 3, by = 0.1)
 # ADMM penalty parameter
 rho <- 0.012
 
-# Threshold to determine if the coefficient is active
+# Threshold to determine for the coefficient 
 threshold <- 0.001
 # Absolute tolerance
 eps_abs <- 1e-4
@@ -32,24 +33,6 @@ TP_list <- FP_list <- FN_list <- TN_list <- numeric(num_replications)
 sensitivity <- specificity <- numeric(num_replications)
 MSE_ADMM_LASSO <- MAE_ADMM_LASSO <- MSE_PRED_ADMM_LASSO <- numeric(num_replications)
 
-# Storage for LASSO-POOL
-beta_pool_lasso <- matrix(0, nrow = num_replications, ncol = p)
-TP_list_LP <- FP_list_LP <- FN_list_LP <- TN_list_LP <- numeric(num_replications)
-sensitivity_LP <- specificity_LP <- numeric(num_replications)
-MSE_LASSO_POOL <- MAE_LASSO_POOL <- MSE_PRED_LASSO_POOL <- numeric(num_replications)
-
-# Storage for LASSO-1 
-all_beta_client1 <- matrix(0, nrow = num_replications, ncol = p)
-TP_list_L1 <- FP_list_L1 <- FN_list_L1 <- TN_list_L1 <- numeric(num_replications)
-sensitivity_L1 <- specificity_L1 <- numeric(num_replications)
-MSE_LASSO_1 <- MAE_LASSO_1 <- MSE_PRED_LASSO_1 <- numeric(num_replications)
-
-######Storage for LASSO-2 ######
-all_beta_client2 <- matrix(0, nrow = num_replications, ncol = p)
-TP_list_L2 <- FP_list_L2 <- FN_list_L2 <- TN_list_L2 <- numeric(num_replications)
-sensitivity_L2 <- specificity_L2 <- numeric(num_replications)
-MSE_LASSO_2 <- MAE_LASSO_2 <- MSE_PRED_LASSO_2 <- numeric(num_replications)
-
 # Soft-thresholding function (proximal operator for the L1 penalty) used in LASSO
 soft_threshold <- function(x, lambda) {
   sign(x) * pmax(0, abs(x) - lambda)
@@ -62,7 +45,7 @@ admm_local_lasso <- function(X, y, z, u, rho) {
   p <- ncol(X)
   a=t(X) %*% X + rho * diag(p)
   b=(t(X) %*% y + rho * (z - u))
-  beta <- solve(a) %*% b
+  beta <- solve(a, b)
   return(as.vector(beta))
 }
 
@@ -105,13 +88,13 @@ for (i in 1:num_replications) {
     for (iter in 1:1000) {
       beta_list <- list()
       
-      #Each client performs a local update
+      #Each client performs local update
       for (k in 1:m) {
         beta_list[[k]] <- admm_local_lasso(clients[[k]]$X, clients[[k]]$y, z, u_list[[k]], rho)
       }
       z_old <- z
       
-      # Server aggregates (beta + u) and updates z
+      # Server aggregates (beta + u) and updates global parameter z
       avg_bu <- Reduce(`+`, Map(`+`, beta_list, u_list)) / m
       z_new  <- soft_threshold(avg_bu, lambda_try / (m * rho)) 
       
@@ -120,7 +103,7 @@ for (i in 1:num_replications) {
         u_list[[k]] <- u_list[[k]] + (beta_list[[k]] - z_new)
       }
       
-      # Residual calculations (stacked across workers)
+      # Residual calculations 
       r_norm <- sqrt(sum(sapply(1:m, function(k) sum((beta_list[[k]] - z_new)^2))))
       s_norm <- rho * sqrt(m) * sqrt(sum((z_new - z_old)^2))
       
@@ -128,7 +111,7 @@ for (i in 1:num_replications) {
       z_norm <- sqrt(m) * sqrt(sum(z_new^2))
       u_norm <- sqrt(sum(sapply(u_list, function(u) sum(u^2))))
       
-      # Tolerances (Boyd, scaled form)
+      # Tolerances
       eps_primal <- sqrt(p * m) * eps_abs + eps_rel * max(beta_norm, z_norm)
       eps_dual <- sqrt(p*m) * eps_abs + eps_rel * (rho * u_norm)
       z <- z_new
@@ -178,7 +161,7 @@ for (i in 1:num_replications) {
       u_list[[k]] <- u_list[[k]] + (beta_list[[k]] - z_new)
     }
     
-    # Residual calculations (stacked across workers)
+    # Residual calculations
     r_norm <- sqrt(sum(sapply(1:m, function(k) sum((beta_list[[k]] - z_new)^2))))
     s_norm <- rho * sqrt(m) * sqrt(sum((z_new - z_old)^2))
     
@@ -186,7 +169,7 @@ for (i in 1:num_replications) {
     z_norm <- sqrt(m) * sqrt(sum(z_new^2))
     u_norm <- sqrt(sum(sapply(u_list, function(u) sum(u^2))))
     
-    # Tolerances (Boyd, scaled form)
+    # Tolerances
     eps_primal <- sqrt(p * m) * eps_abs + eps_rel * max(beta_norm, z_norm)
     eps_dual <- sqrt(p*m) * eps_abs + eps_rel * (rho * u_norm)
     z <- z_new
@@ -245,188 +228,7 @@ for (i in 1:num_replications) {
   y1 <- clients_test[[1]]$y
   y2 <- clients_test[[2]]$y
   MSE_PRED_ADMM_LASSO[i] <- (mean((pred1 - y1)^2) + mean((pred2 - y2)^2)) / m
-  
-  ################################ LASSO-POOL##################
-  pooled_X <- do.call(rbind, lapply(clients, function(cl) cl$X))
-  pooled_y <- do.call(c, lapply(clients, function(cl) cl$y))
-  pooled_X_val <- do.call(rbind, lapply(clients_val, function(cl) cl$X))
-  pooled_y_val <- do.call(c, lapply(clients_val, function(cl) cl$y))
-  #### selecting the Best lambda
-  mse_pool <- sapply(lambda_seq, function(lambda_pool) {
-    fit <- glmnet(pooled_X, pooled_y, alpha = 1, lambda = lambda_pool)
-    b <- as.vector(coef(fit))[-1]
-    mean((pooled_X_val %*% b - pooled_y_val)^2)
-  })
-  best_lambda_pool <- lambda_seq[which.min(mse_pool)]
-  
-  ### Fitting lasso model for pool data with best lambda ###
-  fit_pool <- glmnet(pooled_X, pooled_y, alpha = 1, lambda = best_lambda_pool)
-  beta_pool <- as.vector(coef(fit_pool))[-1]
-  ######## Lasso beta###
-  beta_pool_lasso[i, ] <- beta_pool
-  
-  # Initialize counts for TP, FP, FN, TN
-  TP_LP <- 0
-  FP_LP <- 0
-  FN_LP <- 0
-  TN_LP <- 0
-  # Loop through each beta coefficient to calculate TP, FP, FN, TN
-  for (j in 1:length(true_beta)) {
-    if (abs(true_beta[j]) > threshold) {  # True non-zero beta
-      if (abs(beta_pool[j]) > threshold) {
-        TP_LP <- TP_LP + 1  # True non-zero estimated as non-zero
-      } else {
-        FN_LP <- FN_LP + 1  # True non-zero estimated as zero
-      }
-    } else {  # True zero beta
-      if (abs(beta_pool[j]) > threshold) {
-        FP_LP <- FP_LP + 1  # True zero estimated as non-zero
-      } else {
-        TN_LP <- TN_LP + 1  # True zero estimated as zero
-      }
-    }
-  }
-  
-  # Store the counts
-  TP_list_LP[i] <- TP_LP
-  FP_list_LP[i] <- FP_LP
-  FN_list_LP[i] <- FN_LP
-  TN_list_LP[i] <- TN_LP
-  
-  # Calculate Sensitivity (SE)
-  SE_LP <- TP_LP / (TP_LP + FN_LP)
-  sensitivity_LP[i] <- SE_LP
-  
-  # Calculate Specificity (SP)
-  SP_LP <- TN_LP / (TN_LP + FP_LP)
-  specificity_LP[i] <- SP_LP
-  
-  ####### MSE and MAE for LASSO-POOl coefficient estimation ##########
-  MSE_LASSO_POOL[i] <- mean((beta_pool - true_beta)^2)
-  MAE_LASSO_POOL[i] <- mean(abs(beta_pool - true_beta))
-  
-  ####### MSE for LASSO-POOL predictions ##########
-  pred <- do.call(rbind, lapply(clients_test, function(cl) cl$X)) %*% beta_pool
-  y <- do.call(c, lapply(clients_test, function(cl) cl$y))
-  MSE_PRED_LASSO_POOL[i] <- mean((pred - y)^2)
-  
-  #################### LASSO-1########################
-  #selecting best lambda
-  mse_L1 <- sapply(lambda_seq, function(lambda_l1) {
-    fit_cl_l1 <- glmnet(clients[[1]]$X, clients[[1]]$y, alpha = 1, lambda = lambda_l1)
-    beta_cl_l1 <- as.vector(coef(fit_cl_l1))[-1]
-    mean((clients_val[[1]]$X %*% beta_cl_l1 - clients_val[[1]]$y)^2)
-  })
-  best_lambda_L1 <- lambda_seq[which.min(mse_L1)]
-  ### Fit lasso with the best lambda####
-  fit_L1 <- glmnet(clients[[1]]$X, clients[[1]]$y, alpha = 1, lambda = best_lambda_L1)
-  beta_client1 <- as.vector(coef(fit_L1))[-1]
-  
-  all_beta_client1[i, ] <- beta_client1
-  
-  # Initialize counts for TP, FP, FN, TN
-  TP_L1 <- 0
-  FP_L1 <- 0
-  FN_L1 <- 0
-  TN_L1 <- 0
-  
-  # Loop through each beta coefficient to calculate TP, FP, FN, TN
-  for (j in 1:length(true_beta)) {
-    if (abs(true_beta[j]) > threshold) {  # True non-zero beta
-      if (abs(beta_client1[j]) > threshold) {
-        TP_L1 <- TP_L1 + 1  # True non-zero estimated as non-zero
-      } else {
-        FN_L1 <- FN_L1 + 1  # True non-zero estimated as zero
-      }
-    } else {  # True zero beta
-      if (abs(beta_client1[j]) > threshold) {
-        FP_L1 <- FP_L1 + 1  # True zero estimated as non-zero
-      } else {
-        TN_L1 <- TN_L1 + 1  # True zero estimated as zero
-      }
-    }
-  }
-  
-  # Store the counts
-  TP_list_L1[i] <- TP_L1
-  FP_list_L1[i] <- FP_L1
-  FN_list_L1[i] <- FN_L1
-  TN_list_L1[i] <- TN_L1
-  
-  # Calculate Sensitivity (SE)
-  SE_L1 <- TP_L1 / (TP_L1 + FN_L1)
-  sensitivity_L1[i] <- SE_L1
-  
-  # Calculate Specificity (SP)
-  SP_L1 <- TN_L1 / (TN_L1 + FP_L1)
-  specificity_L1[i] <- SP_L1
-  
-  ####### MSE and MAE for LASSO-1 coefficient estimation ##########
-  MSE_LASSO_1[i] <- mean((beta_client1 - true_beta)^2)
-  MAE_LASSO_1[i] <- mean(abs(beta_client1 - true_beta)) 
-  
-  ####### MSE for LASSO-1 predictions ##########
-  pred_client1_1 <- clients_test[[1]]$X %*% beta_client1
-  MSE_PRED_LASSO_1[i] <- mean((pred_client1_1 - clients_test[[1]]$y)^2)
-  
-  ################## LASSO-2###############
-  mse_L2 <- sapply(lambda_seq, function(lambda_l2) {
-    fit_cl_L2 <- glmnet(clients[[2]]$X, clients[[2]]$y, alpha = 1, lambda = lambda_l2)
-    beta_cl_l2 <- as.vector(coef(fit_cl_L2))[-1]
-    mean((clients_val[[2]]$X %*% beta_cl_l2 - clients_val[[2]]$y)^2)
-  })
-  best_lambda_L2 <- lambda_seq[which.min(mse_L2)]
-  
-  ### Fitting LASSO-2 with best lambda #####
-  fit_L2 <- glmnet(clients[[2]]$X, clients[[2]]$y, alpha = 1, lambda = best_lambda_L2)
-  
-  beta_client2 <- as.vector(coef(fit_L2))[-1]
-  all_beta_client2[i, ] <- beta_client2
-  
-  # Initialize counts for TP, FP, FN, TN
-  TP_L2 <- 0
-  FP_L2 <- 0
-  FN_L2 <- 0
-  TN_L2 <- 0
-  # Loop through each beta coefficient to calculate TP, FP, FN, TN
-  for (j in 1:length(true_beta)) {
-    if (abs(true_beta[j]) > threshold) {  # True non-zero beta
-      if (abs(beta_client2[j]) > threshold) {
-        TP_L2 <- TP_L2 + 1  # True non-zero estimated as non-zero
-      } else {
-        FN_L2 <- FN_L2 + 1  # True non-zero estimated as zero
-      }
-    } else {  # True zero beta
-      if (abs(beta_client2[j]) > threshold) {
-        FP_L2 <- FP_L2 + 1  # True zero estimated as non-zero
-      } else {
-        TN_L2 <- TN_L2 + 1  # True zero estimated as zero
-      }
-    }
-  }
-  
-  # Store the counts
-  TP_list_L2[i] <- TP_L2
-  FP_list_L2[i] <- FP_L2
-  FN_list_L2[i] <- FN_L2
-  TN_list_L2[i] <- TN_L2
-  
-  # Calculate Sensitivity (SE)
-  SE_L2 <- TP_L2 / (TP_L2 + FN_L2)
-  sensitivity_L2[i] <- SE_L2
-  
-  # Calculate Specificity (SP)
-  SP_L2 <- TN_L2 / (TN_L2 + FP_L2)
-  specificity_L2[i] <- SP_L2
-  
-  ####### MSE and MAE for LASSO-2 coefficient estimation ##########
-  MSE_LASSO_2[i] <- mean((beta_client2 - true_beta)^2)
-  MAE_LASSO_2[i] <- mean(abs(beta_client2 - true_beta))
-  
-  ####### MSE for LASSO-2 predictions ##########
-  pred_client2_2 <- clients_test[[2]]$X %*% beta_client2
-  MSE_PRED_LASSO_2[i] <- mean((pred_client2_2 - clients_test[[2]]$y)^2)
-}
+   }
 
 ######################### Performances: FP, FN, TP, TN, SE, SP #######################
 ############################## ADMM-LASSO ######################################
@@ -460,139 +262,42 @@ sd_MAE_ADMM <- sd(MAE_ADMM_LASSO)
 average_MSE_PRED_ADMM <- mean(MSE_PRED_ADMM_LASSO)
 sd_MSE_PRED_ADMM <- sd(MSE_PRED_ADMM_LASSO)
 
-############################## LASSO-POOL ######################################
-avg_TP_LP <- mean(TP_list_LP)
-std_TP_LP <- sd(TP_list_LP)
-
-avg_FP_LP <- mean(FP_list_LP)
-std_FP_LP <- sd(FP_list_LP)
-
-avg_FN_LP <- mean(FN_list_LP)
-std_FN_LP <- sd(FN_list_LP)
-
-avg_TN_LP <- mean(TN_list_LP)
-std_TN_LP <- sd(TN_list_LP)
-
-avg_SE_LP <- mean(sensitivity_LP)
-std_SE_LP <- sd(sensitivity_LP)
-
-avg_SP_LP <- mean(specificity_LP)
-std_SP_LP <- sd(specificity_LP)
-
-# Average and standard deviation of MSE across all replications
-average_MSE_LP <- mean(MSE_LASSO_POOL)
-SD_MSE_LP <- sd(MSE_LASSO_POOL)
-
-# Average and standard deviation of MAE across all replications
-average_MAE_LP <- mean(MAE_LASSO_POOL)
-SD_MAE_LP <- sd(MAE_LASSO_POOL)
-
-# Average and standard deviation of MSE for predictions across all replications
-average_MSE_PRED_LP <- mean(MSE_PRED_LASSO_POOL)
-sd_MSE_PRED_LP <- sd(MSE_PRED_LASSO_POOL)
-
-
-####################### LASSO-1 ###################
-avg_TP_L1 <- mean(TP_list_L1)
-std_TP_L1 <- sd(TP_list_L1)
-
-avg_FP_L1 <- mean(FP_list_L1)
-std_FP_L1 <- sd(FP_list_L1)
-
-avg_FN_L1 <- mean(FN_list_L1)
-std_FN_L1 <- sd(FN_list_L1)
-
-avg_TN_L1 <- mean(TN_list_L1)
-std_TN_L1 <- sd(TN_list_L1)
-
-avg_SE_L1 <- mean(sensitivity_L1)
-std_SE_L1 <- sd(sensitivity_L1)
-
-avg_SP_L1 <- mean(specificity_L1)
-std_SP_L1 <- sd(specificity_L1)
-
-# Average and standard deviation of MSE across all replications
-average_MSE_L1 <- mean(MSE_LASSO_1)
-SD_MSE_L1 <- sd(MSE_LASSO_1)
-
-# Average and standard deviation of MAE across all replications
-average_MAE_L1 <- mean(MAE_LASSO_1)
-SD_MAE_L1 <- sd(MAE_LASSO_1)
-
-# Average and standard deviation of MSE for predictions across all replications
-average_MSE_PRED_L1 <- mean(MSE_PRED_LASSO_1)
-sd_MSE_PRED_L1 <- sd(MSE_PRED_LASSO_1)
-
-################# LASSO-2 ###########################
-avg_TP_L2 <- mean(TP_list_L2)
-std_TP_L2 <- sd(TP_list_L2)
-
-avg_FP_L2 <- mean(FP_list_L2)
-std_FP_L2 <- sd(FP_list_L2)
-
-avg_FN_L2 <- mean(FN_list_L2)
-std_FN_L2 <- sd(FN_list_L2)
-
-avg_TN_L2 <- mean(TN_list_L2)
-std_TN_L2 <- sd(TN_list_L2)
-
-avg_SE_L2 <- mean(sensitivity_L2)
-std_SE_L2 <- sd(sensitivity_L2)
-
-avg_SP_L2 <- mean(specificity_L2)
-std_SP_L2 <- sd(specificity_L2)
-
-# Average and standard deviation of MSE across all replications
-average_MSE_L2 <- mean(MSE_LASSO_2)
-SD_MSE_L2 <- sd(MSE_LASSO_2)
-
-# Average and standard deviation of MAE across all replications
-average_MAE_L2 <- mean(MAE_LASSO_2)
-SD_MAE_L2 <- sd(MAE_LASSO_2)
-
-# Average and standard deviation of MSE for predictions across all replications
-average_MSE_PRED_L2 <- mean(MSE_PRED_LASSO_2)
-sd_MSE_PRED_L2 <- sd(MSE_PRED_LASSO_2)
-
 
 ##############Print all the results #############
 # Print TP metrics for all methods
-cat("TP_ADMM:", avg_TP, "TP_LP:", avg_TP_LP, "TP_L1:", avg_TP_L1, "TP_L2:", avg_TP_L2, "\n")
-cat("SD_TP_ADMM:", std_TP, "SD_TP_LP:", std_TP_LP, "SD_TP_L1:", std_TP_L1, "SD_TP_L2:", std_TP_L2, "\n")
+cat("TP_ADMM:", avg_TP, "\n")
+cat("SD_TP_ADMM:", std_TP, "\n")
 
 # Print FP metrics for all methods
-cat("FP_ADMM:", avg_FP,"FP_LP:", avg_FP_LP, "FP_L1:", avg_FP_L1, "FP_L2:", avg_FP_L2, "\n")
-cat("SD_FP_ADMM:", std_FP, "SD_FP_LP:", std_FP_LP, "SD_FP_L1:", std_FP_L1, "SD_FP_L2:", std_FP_L2, "\n")
+cat("FP_ADMM:", avg_FP, "\n")
+cat("SD_FP_ADMM:", std_FP, "\n")
 
 # Print TN metrics for all methods
-cat("TN_ADMM:", avg_TN, "TN_LP:", avg_TN_LP,"TN_L1:", avg_TN_L1,"TN_L2:", avg_TN_L2, "\n")
-cat("SD_TN_ADMM:", std_TN,"SD_TN_LP:", std_TN_LP, "SD_TN_L1:", std_TN_L1, "SD_TN_L2:", std_TN_L2, "\n")
+cat("TN_ADMM:", avg_TN, "\n")
+cat("SD_TN_ADMM:", std_TN,"\n")
 
 # Print FN metrics for all methods
-cat("FN_ADMM:", avg_FN,"FN_LP:", avg_FN_LP, "FN_L1:", avg_FN_L1, "FN_L2:", avg_FN_L2, "\n")
-cat("SD_FN_ADMM:", std_FN,  "SD_FN_LP:", std_FN_LP, "SD_FN_L1:", std_FN_L1, "SD_FN_L2:", std_FN_L2, "\n")
+cat("FN_ADMM:", avg_FN,"\n")
+cat("SD_FN_ADMM:", std_FN, "\n")
 
 # Print SE metrics for all methods
-cat("SE_ADMM:", avg_SE,"SE_LP:", avg_SE_LP, "SE_L1:", avg_SE_L1, "SE_L2:", avg_SE_L2, "\n")
-cat("SD_SE_ADMM:", std_SE, "SD_SE_LP:", std_SE_LP, "SD_SE_L1:", std_SE_L1,"SD_SE_L2:", std_SE_L2, "\n")
+cat("SE_ADMM:", avg_SE,"\n")
+cat("SD_SE_ADMM:", std_SE,  "\n")
 
 # Print SP metrics for all methods
-cat("SP_ADMM:", avg_SP, "SP_LP:", avg_SP_LP, "SP_L1:", avg_SP_L1, "SP_L2:", avg_SP_L2, "\n")
-cat("SD_SP_ADMM:", std_SP, "SD_SP_LP:", std_SP_LP, "SD_SP_L1:", std_SP_L1, "SD_SP_L2:", std_SP_L2, "\n")
+cat("SP_ADMM:", avg_SP,  "\n")
+cat("SD_SP_ADMM:", std_SP,  "\n")
 
 # Print MSE metrics for all methods
-cat("MSE_ADMM:", average_MSE_ADMM,"MSE_LP:", average_MSE_LP, "MSE_L1:", average_MSE_L1, "MSE_L2:", average_MSE_L2, "\n")
-cat("SD_MSE_ADMM:", sd_MSE_ADMM, "SD_MSE_LP:", SD_MSE_LP, "SD_MSE_L1:", SD_MSE_L1, "SD_MSE_L2:", SD_MSE_L2, "\n")
+cat("MSE_ADMM:", average_MSE_ADMM, "\n")
+cat("SD_MSE_ADMM:", sd_MSE_ADMM, "\n")
 
 # Print MAE metrics for all methods
-cat("MAE_ADMM:", average_MAE_ADMM,"MAE_LP:", average_MAE_LP,  "MAE_L1:", average_MAE_L1, "MAE_L2:", average_MAE_L2, "\n")
-cat("SD_MAE_ADMM:", sd_MAE_ADMM, "SD_MAE_LP:", SD_MAE_LP, "SD_MAE_L1:", SD_MAE_L1, "SD_MAE_L2:", SD_MAE_L2, "\n")
+cat("MAE_ADMM:", average_MAE_ADMM, "\n")
+cat("SD_MAE_ADMM:", sd_MAE_ADMM,  "\n")
 
 # Print MSE_pred metrics for all methods
-cat("MSE_Pred_ADMM_LASSO:", average_MSE_PRED_ADMM,"MSE_Pred_LASSO_LP:", average_MSE_PRED_LP,"MSE_Pred_LASSO_1:", average_MSE_PRED_L1,"MSE_Pred_LASSO_2:", average_MSE_PRED_L2, "\n")
-cat("SD_MSE_Pred_ADMM_LASSO:", sd_MSE_PRED_ADMM, "SD_MSE_Pred_LASSO_LP:", sd_MSE_PRED_LP, "SD_MSE_Pred_LASSO_1:", sd_MSE_PRED_L1,"SD_MSE_Pred_LASSO_2:", sd_MSE_PRED_L2, "\n")
+cat("MSE_Pred_ADMM_LASSO:", average_MSE_PRED_ADMM, "\n")
+cat("SD_MSE_Pred_ADMM_LASSO:", sd_MSE_PRED_ADMM,  "\n")
 
 cat(sprintf("Replication %d: Best Lambda = %.4f\n", i, best_lambda))
-cat(sprintf("Replication %d: Best Lambda = %.4f\n", i, best_lambda_pool))
-cat(sprintf("Replication %d: Best Lambda = %.4f\n", i, best_lambda_L1))
-cat(sprintf("Replication %d: Best Lambda = %.4f\n", i, best_lambda_L2))
