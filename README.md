@@ -31,5 +31,5 @@ The default code uses 100 Monte Carlo replications.
 ## Repository Files
 
 - `index.html` — mathematical formulation, derivation, convergence diagnostics, and algorithm
-- `Federated_ADMM_LASSO_Simulation_Reproducibility.R` — reproducible R code for the primary simulation analysis
+- `Federated_ADMM_LASSO_Simulation_Reproducibility.R` — reproducible R code for the simulation analysis
 - `README.md` — project overview and reproducibility information
