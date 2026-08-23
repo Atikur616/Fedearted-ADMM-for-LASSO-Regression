@@ -25,9 +25,8 @@ The simulation code includes:
 - ADMM convergence diagnostics
 - Statistical comparisons between methods
 - Rho-sensitivity analysis
-- Monte Carlo simulation summaries
 
-The default code uses 100 Monte Carlo replications. Other primary dimensional settings can be evaluated by modifying `p` and `n_per_center` in the simulation script.
+The default code uses 100 Monte Carlo replications. 
 
 ## Repository Files
 
