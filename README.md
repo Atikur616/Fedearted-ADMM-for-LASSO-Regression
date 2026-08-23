@@ -31,6 +31,5 @@ The default code uses 100 Monte Carlo replications.
 ## Repository Files
 
 - `index.html` — mathematical formulation, derivation, convergence diagnostics, and algorithm
-- `ADMM-LASSO_FL.txt` — implementation of the Federated ADMM-LASSO method
 - `Federated_ADMM_LASSO_Simulation_Reproducibility.R` — reproducible R code for the primary simulation analysis
 - `README.md` — project overview and reproducibility information
