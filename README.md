@@ -16,3 +16,4 @@ The complete Federated ADMM-LASSO formulation, update derivations, convergence d
 - `index.html` — mathematical formulation, derivation, convergence diagnostics, and algorithm
 - `ADMM-LASSO_FL.txt` — implementation of the Federated ADMM-LASSO method
 - `README.md` — project overview
+-`Federated ADMM-LASSO Simulation Reproducibility.R` 
